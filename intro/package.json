@@ -1,0 +1,8 @@
+{
+  "name": "bora-fazer-conta-intro",
+  "private": true,
+  "type": "module",
+  "description": "Intro animada em HTML para o canal do YouTube. Abra index.html ou rode `npm run render` para gerar o MP4.",
+  "scripts": { "render": "node render.mjs" },
+  "devDependencies": { "puppeteer-core": "^23.0.0" }
+}

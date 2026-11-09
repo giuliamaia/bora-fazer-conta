@@ -1,0 +1,433 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Intro | Bora Fazer Conta</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Caveat+Brush&family=JetBrains+Mono:wght@400;700&family=Outfit:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root { --board:#173c30; --dark:#102a23; --chalk:#f2ebdd; --yellow:#e9c46a; --red:#c76b60; }
+  html, body { margin:0; height:100%; background:#0b1d18; overflow:hidden; font-family:'Outfit',sans-serif; }
+  #stage {
+    position:absolute; left:50%; top:50%; width:1920px; height:1080px;
+    transform-origin:center; overflow:hidden;
+    background-color:var(--board);
+    background-image:
+      radial-gradient(ellipse at 20% 10%, rgb(255 255 255 / .06), transparent 55%),
+      radial-gradient(ellipse at 80% 95%, rgb(0 0 0 / .30), transparent 60%),
+      radial-gradient(ellipse 30% 8% at 22% 38%, rgb(242 235 221 / .045), transparent),
+      radial-gradient(ellipse 26% 7% at 78% 66%, rgb(242 235 221 / .04), transparent),
+      radial-gradient(rgb(255 255 255 / .04) 1px, transparent 1.5px);
+    background-size:auto,auto,auto,auto,8px 8px;
+  }
+  svg { position:absolute; inset:0; width:1920px; height:1080px; }
+  .ch { fill:none; stroke:var(--chalk); stroke-width:4.5; stroke-linecap:round; stroke-linejoin:round; stroke-dasharray:1; stroke-dashoffset:1; opacity:0; }
+  .y { stroke:var(--yellow); } .r { stroke:var(--red); }
+  .mono { font-family:'JetBrains Mono',monospace; }
+  .disp { font-family:'Caveat Brush',cursive; }
+  #ui { position:fixed; inset:0; display:grid; place-items:center; background:rgb(8 22 18 / .78); z-index:5; gap:14px; align-content:center; }
+  #ui[hidden] { display:none; }
+  #ui button { font:600 22px 'Outfit',sans-serif; padding:14px 28px; border-radius:999px; border:0; cursor:pointer; background:var(--yellow); color:var(--dark); box-shadow:0 4px 0 #a8873a; }
+  #ui button.ghost { background:transparent; color:var(--chalk); box-shadow:none; border:2px solid rgb(242 235 221 / .6); font-size:18px; padding:10px 22px; }
+  #ui h1 { margin:0; font:400 56px 'Caveat Brush',cursive; color:var(--chalk); }
+  body.capture #ui { display:none; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <svg id="svg" viewBox="0 0 1920 1080" xmlns="http://www.w3.org/2000/svg" aria-label="Intro animada do Bora Fazer Conta">
+    <defs>
+      <filter id="rough" x="-5%" y="-5%" width="110%" height="110%">
+        <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="3" result="n"/>
+        <feDisplacementMap in="SourceGraphic" in2="n" scale="2.4"/>
+      </filter>
+    </defs>
+  </svg>
+</div>
+<div id="ui">
+  <h1>Bora Fazer Conta!</h1>
+  <button id="play">▶ Tocar intro com música</button>
+  <button id="mute" class="ghost">Tocar sem som</button>
+</div>
+
+<script>
+/* ============ Configuração ============ */
+const DUR = 9.0;                       // duração total (s)
+const params = new URLSearchParams(location.search);
+const CAPTURE = params.has('capture');
+if (CAPTURE) document.body.classList.add('capture');
+const V = params.has('vertical');                 // ?vertical=1 → 1080x1920 (TikTok / Reels / Shorts)
+const W = V ? 1080 : 1920, H = V ? 1920 : 1080;
+
+const NS = 'http://www.w3.org/2000/svg';
+const svg = document.getElementById('svg');
+svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+for (const e of [svg, document.getElementById('stage')]) { e.style.width = W + 'px'; e.style.height = H + 'px'; }
+// posição (canto sup. esq.) dos 4 gráficos e escala; no vertical respeita as áreas seguras do TikTok/Reels
+const GP = V ? { k: .8, g1: [60, 150], g2: [732, 150], g3: [60, 440], g4: [732, 440] }
+             : { k: 1,  g1: [90, 110], g2: [1470, 110], g3: [90, 640], g4: [1470, 640] };
+const $ = (tag, attrs = {}, parent = svg, text) => {
+  const e = document.createElementNS(NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (text != null) e.textContent = text;
+  parent.appendChild(e);
+  return e;
+};
+const clamp = x => Math.min(1, Math.max(0, x));
+const seg = (t, a, b) => clamp((t - a) / (b - a));
+const easeOut = x => 1 - Math.pow(1 - x, 3);
+const easeIO = x => (x < .5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) / 2);
+
+const anims = [];                      // funções (t) => void
+const draw = (e, p) => { e.style.strokeDashoffset = 1 - p; e.style.opacity = p > 0 ? 1 : 0; };
+const fade = (e, p, rise = 12) => { e.style.opacity = p; e.setAttribute('transform', `translate(0 ${(1 - p) * rise})`); };
+const fn2d = (f, x0, x1, ox, oy, sx, sy, n = 80) =>
+  Array.from({ length: n + 1 }, (_, i) => {
+    const x = x0 + (x1 - x0) * i / n;
+    return `${i ? 'L' : 'M'}${(ox + x * sx).toFixed(1)} ${(oy - f(x) * sy).toFixed(1)}`;
+  }).join(' ');
+const axes = (ox, oy, xl, xr, yt, yb) =>
+  `M${xl} ${oy}H${xr}M${ox} ${yb}V${yt}M${xr - 14} ${oy - 8}L${xr} ${oy}L${xr - 14} ${oy + 8}M${ox - 8} ${yt + 14}L${ox} ${yt}L${ox + 8} ${yt + 14}`;
+const label = (x, y, text, cls, size, fill, anchor = 'start') =>
+  $('text', { x, y, class: cls, 'font-size': size, fill, 'text-anchor': anchor }, LG, text);
+
+const g = $('g', { filter: 'url(#rough)' });   // tudo com aspecto de giz
+let LG = g;                                    // grupo onde os rótulos são desenhados
+const panel = (px, py) => {
+  LG = $('g', { transform: `translate(${px} ${py}) scale(${GP.k}) translate(${-px} ${-py})` }, g);
+  return LG;
+};
+
+/* ============ Bandeja de giz + apagador ============ */
+const tray = $('g', {}, svg);
+const [ex, c1x] = V ? [100, 640] : [260, 1480], ty = H - 34;
+$('rect', { x: 0, y: ty, width: W, height: 34, fill: '#0c211b' }, tray);
+$('rect', { x: 0, y: ty, width: W, height: 3, fill: '#2b4a3f' }, tray);
+$('rect', { x: ex, y: ty - 24, width: 170, height: 24, rx: 5, fill: '#262b29' }, tray);
+$('rect', { x: ex, y: ty - 24, width: 170, height: 8, rx: 4, fill: '#d9b94e' }, tray);
+$('rect', { x: c1x, y: ty - 12, width: 70, height: 12, rx: 6, fill: '#f2ebdd' }, tray);
+$('rect', { x: c1x + 90, y: ty - 12, width: 54, height: 12, rx: 6, fill: '#e9c46a' }, tray);
+$('rect', { x: c1x + 162, y: ty - 12, width: 60, height: 12, rx: 6, fill: '#c76b60' }, tray);
+
+/* ============ Gráfico 1 — y = x² ============ */
+(() => {
+  const [px, py] = GP.g1, ox = px + 180, oy = py + 250, s = 0.4;
+  const gg = panel(px, py);
+  const ax = $('path', { d: axes(ox, oy, px, px + 360, py, py + 290), class: 'ch', pathLength: 1 }, gg);
+  const cv = $('path', { d: fn2d(x => x * x, -1.5, 1.5, ox, oy, 80, 100), class: 'ch y', pathLength: 1 }, gg);
+  const lb = label(px + 312, py + 82, 'y = x²', 'mono', 38, 'var(--yellow)');
+  const dot = $('circle', { r: 9, fill: 'var(--yellow)', opacity: 0 }, gg);
+  const len = cv.getTotalLength();
+  anims.push(t => {
+    draw(ax, easeOut(seg(t, s, s + .6)));
+    draw(cv, easeIO(seg(t, s + .6, s + 1.6)));
+    fade(lb, seg(t, s + 1.4, s + 1.9));
+    const p = seg(t, s + 1.9, s + 3.1);
+    const pt = cv.getPointAtLength(easeIO(p) * len);
+    dot.setAttribute('cx', pt.x); dot.setAttribute('cy', pt.y);
+    dot.style.opacity = p > 0 && p < 1 ? 1 : 0;
+  });
+})();
+
+/* ============ Gráfico 2 — y = sen(x), 0 a 2π ============ */
+(() => {
+  const [px, py] = GP.g2, ox = px + 30, oy = py + 165, s = 0.7;
+  const gg = panel(px, py);
+  const ax = $('path', { d: axes(ox, oy, px, px + 360, py, py + 330), class: 'ch', pathLength: 1 }, gg);
+  const cv = $('path', { d: fn2d(Math.sin, 0, 2 * Math.PI, ox, oy, 48, 100, 120), class: 'ch r', pathLength: 1 }, gg);
+  const lb = label(px + 165, py + 40, 'y = sen(x)', 'mono', 38, 'var(--red)');
+  const pi = label(ox + Math.PI * 48, oy + 36, 'π', 'mono', 28, 'var(--chalk)', 'middle');
+  const pi2 = label(ox + 2 * Math.PI * 48, oy + 36, '2π', 'mono', 28, 'var(--chalk)', 'middle');
+  const dot = $('circle', { r: 9, fill: 'var(--red)', opacity: 0 }, gg);
+  const len = cv.getTotalLength();
+  anims.push(t => {
+    draw(ax, easeOut(seg(t, s, s + .6)));
+    draw(cv, easeIO(seg(t, s + .6, s + 1.7)));
+    fade(lb, seg(t, s + 1.5, s + 2));
+    fade(pi, seg(t, s + 1.2, s + 1.7)); fade(pi2, seg(t, s + 1.6, s + 2.1));
+    const p = seg(t, s + 2.1, s + 3.3);
+    const pt = cv.getPointAtLength(easeIO(p) * len);
+    dot.setAttribute('cx', pt.x); dot.setAttribute('cy', pt.y);
+    dot.style.opacity = p > 0 && p < 1 ? 1 : 0;
+  });
+})();
+
+/* ============ Gráfico 3 — v × t (v = v₀ + a·t) ============ */
+(() => {
+  const [px, py] = GP.g3, ox = px + 50, oy = py + 290, s = 1.0;
+  const gg = panel(px, py);
+  const T = 4, v0 = 1, a = 1.5, kt = 68, kv = 36;      // v(4) = 7
+  const ax = $('path', { d: axes(ox, oy, px, px + 360, py + 10, py + 320), class: 'ch', pathLength: 1 }, gg);
+  const x1 = ox + T * kt, y0 = oy - v0 * kv, y1 = oy - (v0 + a * T) * kv;
+  const area = $('path', { d: `M${ox} ${oy}V${y0}L${x1} ${y1}V${oy}Z`, fill: 'rgb(233 196 106 / .16)', opacity: 0 }, gg);
+  const ln = $('path', { d: `M${ox} ${y0}L${x1} ${y1}`, class: 'ch y', pathLength: 1 }, gg);
+  const drop = $('path', { d: `M${x1} ${y1}V${oy}`, class: 'ch', pathLength: 1, 'stroke-width': 3 }, gg);
+  const lb = label(px + 90, py + 8, 'v = v₀ + a·t', 'mono', 38, 'var(--yellow)');
+  const lv = label(ox - 12, py + 30, 'v', 'mono', 30, 'var(--chalk)', 'end');
+  const lt = label(px + 352, oy + 38, 't', 'mono', 30, 'var(--chalk)', 'end');
+  const la = label(ox + 28, oy - 28, 'área = Δs', 'mono', 28, 'var(--chalk)');
+  const dot = $('circle', { r: 9, fill: 'var(--yellow)', opacity: 0 }, gg);
+  anims.push(t => {
+    draw(ax, easeOut(seg(t, s, s + .6)));
+    draw(ln, easeIO(seg(t, s + .6, s + 1.5)));
+    draw(drop, seg(t, s + 1.5, s + 1.9));
+    area.style.opacity = seg(t, s + 1.6, s + 2.2);
+    fade(lb, seg(t, s + 1.3, s + 1.8)); fade(lv, seg(t, s + .8, s + 1.2)); fade(lt, seg(t, s + .8, s + 1.2));
+    fade(la, seg(t, s + 2, s + 2.5));
+    const p = seg(t, s + 2.2, s + 3.4);
+    dot.setAttribute('cx', ox + p * T * kt); dot.setAttribute('cy', y0 + (y1 - y0) * p);
+    dot.style.opacity = p > 0 && p < 1 ? 1 : 0;
+  });
+})();
+
+/* ============ Gráfico 4 — lançamento oblíquo (v₀=20 m/s, θ=45°, g=10 m/s²) ============ */
+(() => {
+  // y = x·tgθ − g·x² / (2·v₀²·cos²θ) = x − 0,025·x²  →  alcance 40 m, altura máx. 10 m
+  const [px, py] = GP.g4, ox = px + 30, oy = py + 255, s = 1.3, k = 8;
+  const gg = panel(px, py);
+  const ax = $('path', { d: axes(ox, oy, px, px + 370, py + 10, py + 300), class: 'ch', pathLength: 1 }, gg);
+  const cv = $('path', { d: fn2d(x => x - 0.025 * x * x, 0, 40, ox, oy, k, k, 80), class: 'ch r', pathLength: 1 }, gg);
+  const vec = $('path', { d: `M${ox} ${oy}L${ox + 70} ${oy - 70}M${ox + 48} ${oy - 70}L${ox + 70} ${oy - 70}L${ox + 70} ${oy - 48}`, class: 'ch y', pathLength: 1, 'stroke-width': 4 }, gg);
+  const peak = $('path', { d: `M${ox + 20 * k} ${oy}V${oy - 10 * k}`, stroke: 'var(--chalk)', 'stroke-width': 3, 'stroke-dasharray': '3 12', 'stroke-linecap': 'round', fill: 'none', opacity: 0 }, gg);
+  const lb = label(px + 235, py + 40, 'lançamento oblíquo', 'mono', 30, 'var(--red)', 'middle');
+  const lth = label(ox + 78, oy - 6, 'θ = 45°', 'mono', 26, 'var(--yellow)');
+  const lr = label(ox + 20 * k, oy + 40, 'alcance = 40 m', 'mono', 26, 'var(--chalk)', 'middle');
+  const lh = label(ox + 20 * k + 10, oy - 10 * k - 12, 'h = 10 m', 'mono', 26, 'var(--chalk)');
+  const dot = $('circle', { r: 9, fill: 'var(--red)', opacity: 0 }, gg);
+  const len = cv.getTotalLength();
+  anims.push(t => {
+    draw(ax, easeOut(seg(t, s, s + .6)));
+    draw(vec, seg(t, s + .5, s + 1));
+    fade(lth, seg(t, s + .9, s + 1.3));
+    draw(cv, easeIO(seg(t, s + 1, s + 2.1)));
+    fade(lb, seg(t, s + 1.6, s + 2.1));
+    peak.style.opacity = seg(t, s + 2, s + 2.4);
+    fade(lh, seg(t, s + 2.1, s + 2.5)); fade(lr, seg(t, s + 2.2, s + 2.6));
+    const p = seg(t, s + 2.4, s + 3.5);
+    const pt = cv.getPointAtLength(p * len);
+    dot.setAttribute('cx', pt.x); dot.setAttribute('cy', pt.y);
+    dot.style.opacity = p > 0 && p < 1 ? 1 : 0;
+  });
+})();
+
+/* ============ Decoração: triângulo 3-4-5, círculo, fórmulas ============ */
+(() => {
+  LG = g;
+  const s = 1.8;
+  // [x, y, escala] do triângulo; [cx, cy, r] do círculo; posições das fórmulas
+  const D = V
+    ? { tri: [490, 285, 25], circ: [540, 420, 44], f1: [540, 540], f2: [540, 610], f3: [540, 680], eq: [540, 170], aa: [540, 355], fs: 34 }
+    : { tri: [540, 230, 40], circ: [1250, 170, 58], f1: [880, 150], f2: [1030, 235], f3: [815, 235], eq: [620, 80], aa: [1250, 80], fs: 40 };
+  const [x, y, sc] = D.tri, [cx, cy, r] = D.circ;
+  const tri = $('path', { d: `M${x} ${y}H${x + 4 * sc}V${y - 3 * sc}Z`, class: 'ch', pathLength: 1, 'stroke-width': 3.5, opacity: 0 }, g);
+  const sq = $('path', { d: `M${x + 4 * sc - 16} ${y}V${y - 16}H${x + 4 * sc}`, class: 'ch', pathLength: 1, 'stroke-width': 3 }, g);
+  const l4 = label(x + 2 * sc, y + 32, '4', 'mono', 26, 'var(--chalk)', 'middle');
+  const l3 = label(x + 4 * sc + 24, y - 1.5 * sc + 8, '3', 'mono', 26, 'var(--chalk)', 'middle');
+  const l5 = label(x + 1.6 * sc, y - 1.75 * sc, '5', 'mono', 26, 'var(--yellow)', 'middle');
+  const eq1 = label(D.eq[0], D.eq[1], '3² + 4² = 5²', 'mono', 26, 'rgb(242 235 221 / .55)', 'middle');
+  const circ = $('circle', { cx, cy, r, class: 'ch', pathLength: 1, 'stroke-width': 3.5 }, g);
+  const rad = $('path', { d: `M${cx} ${cy}H${cx + r}`, class: 'ch y', pathLength: 1, 'stroke-width': 3.5 }, g);
+  const lr = label(cx + r * .52, cy - 10, 'r', 'mono', 26, 'var(--yellow)', 'middle');
+  const la = label(D.aa[0], D.aa[1], 'A = πr²', 'mono', 26, 'rgb(242 235 221 / .55)', 'middle');
+  const f1 = label(D.f1[0], D.f1[1], 'F = m · a', 'mono', D.fs, 'rgb(242 235 221 / .6)', 'middle');
+  const f2 = label(D.f2[0], D.f2[1], 'V = R · i', 'mono', D.fs, 'rgb(242 235 221 / .5)', 'middle');
+  const f3 = label(D.f3[0], D.f3[1], 'E = mc²', 'mono', D.fs - 2, 'rgb(233 196 106 / .6)', 'middle');
+  anims.push(t => {
+    draw(tri, easeOut(seg(t, s, s + .8))); draw(sq, seg(t, s + .7, s + 1));
+    [l4, l3, l5].forEach((e, i) => fade(e, seg(t, s + .6 + i * .12, s + 1)));
+    fade(eq1, seg(t, s + 1, s + 1.5));
+    draw(circ, easeOut(seg(t, s + .3, s + 1.2))); draw(rad, seg(t, s + 1.1, s + 1.4));
+    fade(lr, seg(t, s + 1.3, s + 1.6)); fade(la, seg(t, s + 1.4, s + 1.9));
+    fade(f1, seg(t, s + .5, s + 1)); fade(f2, seg(t, s + .9, s + 1.4)); fade(f3, seg(t, s + .7, s + 1.2));
+  });
+})();
+
+/* ============ Título, frase, assinatura e equação final ============ */
+const T = {};
+const stage = () => {
+  LG = g;
+  const cx = W / 2;
+  const L = V
+    ? { fs: 232, y1: 990, y2: 1195, pill: [770, 22, 3], tag: [['Matemática e Física', 1330], ['sem fingir que tudo é óbvio.', 1395]], tagSize: 58, sig: 1470, sigSize: 26, eq: 1545 }
+    : { fs: 262, y1: 535, y2: 772, pill: [318, 26, 4], tag: [['Matemática e Física sem fingir que tudo é óbvio.', 880]], tagSize: 58, sig: 940, sigSize: 28, eq: 1004 };
+  const mk = (y, content) => {
+    const t = $('text', { x: cx, y, class: 'disp', 'font-size': L.fs, fill: 'var(--chalk)', 'text-anchor': 'middle' }, g);
+    content.forEach(([txt, fill]) => $('tspan', fill ? { fill } : {}, t, txt));
+    return t;
+  };
+  const defs = svg.querySelector('defs');
+  const clipRect = id => { const c = $('clipPath', { id }, defs); return $('rect', {}, c); };
+
+  const t1 = mk(L.y1, [['Bora Fazer']]);
+  const t2 = mk(L.y2, [['Conta'], ['!', '#e9c46a']]);
+  t1.setAttribute('clip-path', 'url(#c1)'); t2.setAttribute('clip-path', 'url(#c2)');
+  const c1 = clipRect('c1'), c2 = clipRect('c2');
+  const b1 = t1.getBBox(), b2 = t2.getBBox();
+
+  const pill = label(cx, L.pill[0], 'PROFESSOR GUILHERME OLIVEIRA · MATEMÁTICA E FÍSICA', 'mono', L.pill[1], 'var(--yellow)', 'middle');
+  pill.setAttribute('letter-spacing', L.pill[2]);
+  const uy = L.y2 + 36;   // logo abaixo da linha de base de "Conta!"
+  const ul = $('path', { d: `M${b2.x + 10} ${uy}C${b2.x + 150} ${uy - 10},${b2.x + 330} ${uy + 8},${b2.x + b2.width * .55} ${uy - 2}S${b2.x + b2.width - 20} ${uy + 4},${b2.x + b2.width - 6} ${uy - 6}`, class: 'ch y', pathLength: 1, 'stroke-width': 7 }, g);
+  const tags = L.tag.map(([txt, y]) => label(cx, y, txt, 'disp', L.tagSize, 'var(--yellow)', 'middle'));
+  const sig = label(cx, L.sig, '// menos decoreba. mais raciocínio.', 'mono', L.sigSize, 'rgb(242 235 221 / .7)', 'middle');
+
+  const eq = $('text', { x: cx, y: L.eq, class: 'mono', 'font-size': 40, fill: 'var(--chalk)', 'text-anchor': 'middle' }, g);
+  $('tspan', {}, eq, '2x + 3 = 11  ');
+  $('tspan', { fill: '#e9c46a' }, eq, '→');
+  $('tspan', { fill: '#e9c46a' }, eq, '  x = 4');
+  const eb = eq.getBBox();
+  const ck = $('path', { d: `M${eb.x + eb.width + 24} ${eb.y + 26}L${eb.x + eb.width + 46} ${eb.y + 50}L${eb.x + eb.width + 92} ${eb.y - 6}`, class: 'ch y', pathLength: 1, 'stroke-width': 9 }, g);
+
+  // giz "escrevendo"
+  const stick = $('g', {}, svg);
+  $('rect', { x: -6, y: -24, width: 62, height: 18, rx: 5, fill: '#f2ebdd', transform: 'rotate(-32)' }, stick);
+  stick.style.opacity = 0;
+
+  const write = (clip, bb, p) => {
+    const q = p >= 1 ? 1 : Math.floor(p * 18) / 18;
+    clip.setAttribute('x', bb.x - 20); clip.setAttribute('y', bb.y - 30);
+    clip.setAttribute('height', bb.height + 60); clip.setAttribute('width', (bb.width + 40) * q);
+  };
+  anims.push(t => {
+    const p1 = easeIO(seg(t, 2.9, 3.8)), p2 = easeIO(seg(t, 3.85, 4.65));
+    write(c1, b1, p1); write(c2, b2, p2);
+    fade(pill, seg(t, 2.6, 3.1), 8);
+    // posição do giz
+    let active = (t > 2.9 && t < 3.8) ? 1 : (t >= 3.85 && t < 4.65) ? 2 : (t >= 4.7 && t < 5.2) ? 3 : 0;
+    if (active) {
+      let x, y;
+      if (active === 1) { x = b1.x + b1.width * p1; y = L.y1 - 80 + Math.sin(t * 40) * 6; }
+      else if (active === 2) { x = b2.x + b2.width * p2; y = L.y2 - 80 + Math.sin(t * 40) * 6; }
+      else { const q = seg(t, 4.7, 5.2); x = b2.x + b2.width * q; y = uy; }
+      stick.setAttribute('transform', `translate(${x} ${y})`);
+    }
+    stick.style.opacity = active ? 1 : 0;
+    draw(ul, easeOut(seg(t, 4.7, 5.2)));
+    tags.forEach((e, i) => fade(e, seg(t, 5.3 + i * .25, 5.9 + i * .25), 16));
+    fade(sig, seg(t, 5.9, 6.4), 10);
+    fade(eq, seg(t, 6.4, 6.9), 10);
+    draw(ck, easeOut(seg(t, 7.3, 7.7)));
+  });
+  svg.appendChild(shade);           // o véu de fade fica sempre por cima
+};
+
+/* ============ Cena: fade de entrada/saída e deriva suave ============ */
+const shade = $('rect', { width: W, height: H, fill: '#0b1d18' });
+anims.push(t => {
+  const inn = 1 - seg(t, 0, 0.7), out = seg(t, DUR - 0.5, DUR);
+  shade.style.opacity = Math.max(inn, out);
+});
+
+function render(t) { anims.forEach(f => f(t)); }
+
+/* ============ Áudio (WebAudio, tudo sintetizado: nada de música de terceiros) ============ */
+const midi = m => 440 * Math.pow(2, (m - 69) / 12);
+const MEL  = [[0,72],[.5,76],[1,79],[1.5,76],[2,69],[2.5,72],[3,77],[3.5,72],[4,67],[4.5,71],[5,74],[5.5,79],[6,76],[6.4,74],[6.8,72]];
+const BASS = [[0,48],[1,55],[2,53],[3,60],[4,55],[5,62],[6,55]];
+
+function schedule(ctx, t0) {
+  const master = ctx.createGain(); master.gain.value = 0.55;
+  const comp = ctx.createDynamicsCompressor();
+  master.connect(comp); comp.connect(ctx.destination);
+
+  const pluck = (f, t, dur, vol, type = 'triangle') => {
+    const o = ctx.createOscillator(), o2 = ctx.createOscillator();
+    const g1 = ctx.createGain(), g2 = ctx.createGain(), lp = ctx.createBiquadFilter();
+    o.type = type; o.frequency.value = f; o2.type = 'sine'; o2.frequency.value = f * 2; g2.gain.value = 0.28;
+    lp.type = 'lowpass'; lp.frequency.value = 3200;
+    g1.gain.setValueAtTime(0.0001, t0 + t);
+    g1.gain.linearRampToValueAtTime(vol, t0 + t + 0.008);
+    g1.gain.exponentialRampToValueAtTime(0.0008, t0 + t + dur);
+    o.connect(g1); o2.connect(g2); g2.connect(g1); g1.connect(lp); lp.connect(master);
+    o.start(t0 + t); o2.start(t0 + t); o.stop(t0 + t + dur + 0.05); o2.stop(t0 + t + dur + 0.05);
+  };
+  // ruído (hi-hat suave e arranhado do giz)
+  const nbuf = ctx.createBuffer(1, ctx.sampleRate * 0.3, ctx.sampleRate);
+  const nd = nbuf.getChannelData(0); for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+  const noise = (t, dur, freq, q, vol) => {
+    const s = ctx.createBufferSource(); s.buffer = nbuf;
+    const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = freq; bp.Q.value = q;
+    const gn = ctx.createGain();
+    gn.gain.setValueAtTime(vol, t0 + t); gn.gain.exponentialRampToValueAtTime(0.0005, t0 + t + dur);
+    s.connect(bp); bp.connect(gn); gn.connect(master); s.start(t0 + t); s.stop(t0 + t + dur + 0.02);
+  };
+
+  MEL.forEach(([t, m]) => pluck(midi(m), t, 0.42, 0.22));
+  BASS.forEach(([t, m]) => pluck(midi(m), t, 0.6, 0.30, 'sine'));
+  for (let t = 0; t < 7.2; t += 0.5) noise(t + 0.25, 0.05, 7500, 1.2, 0.05);   // pulso leve
+  for (let t = 2.9; t < 3.8; t += 0.07) noise(t, 0.05, 3800, 3, 0.07);          // giz escrevendo (linha 1)
+  for (let t = 3.85; t < 4.65; t += 0.07) noise(t, 0.05, 3800, 3, 0.07);        // linha 2
+  for (let t = 4.7; t < 5.2; t += 0.06) noise(t, 0.05, 4200, 3, 0.05);          // sublinhado
+  // acorde final + brilho no "✓"
+  [48, 55, 64, 72].forEach(m => pluck(midi(m), 7.3, 1.5, 0.2));
+  [[7.3, 84], [7.42, 88], [7.54, 91], [7.66, 96]].forEach(([t, m]) => pluck(midi(m), t, 0.9, 0.09, 'sine'));
+}
+
+function wavBase64(buf) {
+  const ch = buf.numberOfChannels, n = buf.length, out = new DataView(new ArrayBuffer(44 + n * ch * 2));
+  const w = (o, s) => [...s].forEach((c, i) => out.setUint8(o + i, c.charCodeAt(0)));
+  w(0, 'RIFF'); out.setUint32(4, 36 + n * ch * 2, true); w(8, 'WAVE'); w(12, 'fmt ');
+  out.setUint32(16, 16, true); out.setUint16(20, 1, true); out.setUint16(22, ch, true);
+  out.setUint32(24, buf.sampleRate, true); out.setUint32(28, buf.sampleRate * ch * 2, true);
+  out.setUint16(32, ch * 2, true); out.setUint16(34, 16, true); w(36, 'data'); out.setUint32(40, n * ch * 2, true);
+  const d = [...Array(ch)].map((_, c) => buf.getChannelData(c));
+  let o = 44;
+  for (let i = 0; i < n; i++) for (let c = 0; c < ch; c++) {
+    const v = Math.max(-1, Math.min(1, d[c][i])); out.setInt16(o, v * 0x7fff, true); o += 2;
+  }
+  let bin = ''; const u = new Uint8Array(out.buffer);
+  for (let i = 0; i < u.length; i += 0x8000) bin += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000));
+  return btoa(bin);
+}
+window.renderAudio = async () => {
+  const ctx = new OfflineAudioContext(2, Math.ceil(44100 * (DUR + 0.3)), 44100);
+  schedule(ctx, 0);
+  return wavBase64(await ctx.startRendering());
+};
+
+/* ============ Player ============ */
+function fit() {
+  const s = CAPTURE ? 1 : Math.min(innerWidth / W, innerHeight / H);
+  document.getElementById('stage').style.transform = `translate(-50%,-50%) scale(${s})`;
+}
+addEventListener('resize', fit); fit();
+
+let ctx = null, raf = 0;
+function play(withSound) {
+  cancelAnimationFrame(raf);
+  document.getElementById('ui').hidden = true;
+  const t0 = performance.now() + 150;
+  let actx = null, start = 0;
+  if (withSound) {
+    if (ctx) ctx.close();
+    actx = ctx = new (window.AudioContext || window.webkitAudioContext)();
+    start = actx.currentTime + 0.15;
+    schedule(actx, start);
+  }
+  const tick = () => {
+    const t = withSound ? actx.currentTime - start : (performance.now() - t0) / 1000;
+    render(Math.max(0, Math.min(DUR, t)));
+    if (t < DUR) raf = requestAnimationFrame(tick);
+    else {
+      const ui = document.getElementById('ui');
+      document.getElementById('play').textContent = '↻ Ver de novo com música';
+      document.getElementById('mute').textContent = 'Ver sem som';
+      ui.hidden = false;
+    }
+  };
+  tick();
+}
+document.getElementById('play').onclick = () => play(true);
+document.getElementById('mute').onclick = () => play(false);
+addEventListener('keydown', e => { if (e.key === ' ' || e.key.toLowerCase() === 'r') play(true); });
+
+window.seek = t => render(t);
+window.ready = document.fonts.load("100px 'Caveat Brush'")
+  .then(() => document.fonts.load("20px 'JetBrains Mono'"))
+  .then(() => document.fonts.ready)
+  .then(() => { stage(); render(CAPTURE ? 0 : DUR - 0.6); window.__ok = true; });
+</script>
+</body>
+</html>

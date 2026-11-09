@@ -1,0 +1,158 @@
+@import "tailwindcss";
+
+@theme {
+  --color-board: #173c30;
+  --color-board-dark: #102a23;
+  --color-chalk: #f2ebdd;
+  --color-chalk-yellow: #e9c46a;
+  --color-chalk-red: #c76b60;
+  --color-paper: #f6f1e6;
+  --color-graphite: #262b29;
+
+  --font-display: var(--font-display), "Comic Sans MS", cursive;
+  --font-sans: var(--font-sans), system-ui, sans-serif;
+  --font-mono: var(--font-mono), ui-monospace, monospace;
+}
+
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 4.5rem;
+}
+
+body {
+  background: var(--color-board-dark);
+  color: var(--color-chalk);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---------- Lousa ---------- */
+.board {
+  background-color: var(--color-board);
+  background-image:
+    radial-gradient(ellipse at 20% 10%, rgb(255 255 255 / 0.05), transparent 55%),
+    radial-gradient(ellipse at 80% 90%, rgb(0 0 0 / 0.25), transparent 60%),
+    radial-gradient(rgb(255 255 255 / 0.035) 1px, transparent 1.5px);
+  background-size: auto, auto, 7px 7px;
+}
+.board-dark {
+  background-color: var(--color-board-dark);
+  background-image:
+    radial-gradient(ellipse at 70% 0%, rgb(255 255 255 / 0.04), transparent 50%),
+    radial-gradient(rgb(255 255 255 / 0.03) 1px, transparent 1.5px);
+  background-size: auto, 7px 7px;
+}
+/* marca de apagador */
+.smudge::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 40% 12% at 15% 30%, rgb(242 235 221 / 0.05), transparent),
+    radial-gradient(ellipse 35% 9% at 75% 70%, rgb(242 235 221 / 0.045), transparent);
+  transform: rotate(-4deg);
+}
+
+/* ---------- Papel de caderno ---------- */
+.notebook {
+  background-color: var(--color-paper);
+  color: var(--color-graphite);
+  background-image:
+    linear-gradient(to right, transparent 3.2rem, rgb(199 107 96 / 0.55) 3.2rem, rgb(199 107 96 / 0.55) calc(3.2rem + 1.5px), transparent calc(3.2rem + 1.5px)),
+    repeating-linear-gradient(to bottom, transparent 0 1.9rem, rgb(80 120 150 / 0.22) 1.9rem calc(1.9rem + 1px));
+}
+
+/* ---------- Giz ---------- */
+.chalk-text {
+  color: var(--color-chalk);
+  text-shadow: 0 0 1px rgb(242 235 221 / 0.6), 0 0 6px rgb(242 235 221 / 0.12);
+}
+.chalk-stroke {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: url(#chalk-rough);
+}
+
+/* escrita progressiva do título (clip + passos para dar ritmo de giz) */
+@keyframes write-in {
+  from { clip-path: inset(-10% 100% -10% 0); }
+  to   { clip-path: inset(-10% -2% -10% 0); }
+}
+.write {
+  clip-path: inset(-10% 100% -10% 0);
+  animation: write-in var(--dur, 1.2s) steps(var(--steps, 14), end) var(--delay, 0.2s) forwards;
+}
+
+@keyframes draw {
+  to { stroke-dashoffset: 0; }
+}
+.draw {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: draw var(--dur, 1s) ease-out var(--delay, 0.8s) forwards;
+}
+/* só inicia quando visível */
+.js .draw-view { stroke-dasharray: 1; stroke-dashoffset: 1; }
+.js .in .draw-view, .js .draw-view.in { animation: draw var(--dur, 1.1s) ease-out var(--delay, 0.1s) forwards; }
+
+/* ---------- Revelação ao rolar ---------- */
+.js .reveal {
+  opacity: 0;
+  transform: translateY(14px);
+  transition: opacity 0.7s ease, transform 0.7s ease;
+  transition-delay: var(--delay, 0s);
+}
+.js .reveal.in { opacity: 1; transform: none; }
+
+/* ---------- Hover: sublinhado de giz ---------- */
+.chalk-underline {
+  background-image: linear-gradient(var(--color-chalk-yellow), var(--color-chalk-yellow));
+  background-repeat: no-repeat;
+  background-position: 0 100%;
+  background-size: 0% 3px;
+  transition: background-size 0.35s ease;
+}
+.chalk-underline:hover, .chalk-underline:focus-visible, .group:hover .chalk-underline {
+  background-size: 100% 3px;
+}
+
+:focus-visible {
+  outline: 3px solid var(--color-chalk-yellow);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+/* ---------- Easter eggs de Matemática e Física (hover) ---------- */
+.egg { z-index: 20; }
+.egg-dot { fill: var(--color-chalk-yellow); opacity: 0; offset-rotate: 0deg; }
+.egg:hover .egg-dot { opacity: 1; animation: ride 1.8s ease-in-out forwards; }
+@keyframes ride { from { offset-distance: 0%; } to { offset-distance: 100%; } }
+
+.egg-spin { transform-box: view-box; transform-origin: 90px 90px; }
+.egg:hover .egg-spin { animation: spin-once 1.4s ease-in-out; }
+@keyframes spin-once { to { transform: rotate(360deg); } }
+
+.egg-note { opacity: 0; transition: opacity 0.3s ease; }
+.egg:hover .egg-note { opacity: 1; }
+
+.egg-formula > span { transition: opacity 0.35s ease, transform 0.35s ease; }
+.egg-formula-b { position: absolute; left: 0; top: 0; white-space: nowrap; opacity: 0; transform: translateY(5px); color: var(--color-chalk-yellow); }
+.egg-formula:hover .egg-formula-a { opacity: 0; }
+.egg-formula:hover .egg-formula-b { opacity: 1; transform: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .egg-dot { display: none; }
+  .egg:hover .egg-spin { animation: none; }
+  html { scroll-behavior: auto; }
+  .write, .draw, .js .draw-view {
+    animation: none !important;
+    clip-path: none !important;
+    stroke-dashoffset: 0 !important;
+  }
+  .js .reveal { opacity: 1; transform: none; transition: none; }
+  * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
